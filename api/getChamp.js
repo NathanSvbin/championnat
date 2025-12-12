@@ -1,63 +1,78 @@
-// Fotmob.js (Classe robuste pour Vercel)
+// getChamp.js - Contient la classe API et l'exportation du singleton
 
 import axios from "axios";
+
+const CACHE_EXPIRATION_MS = 5 * 60 * 1000; // 5 minutes de cache
 
 class Fotmob {
     constructor() {
         this.cache = new Map();
         this.xmas = undefined;
+        this.initializationPromise = this.ensureInitialized(); // 🌟 Lance l'initialisation au démarrage
         this.baseUrl = "https://www.fotmob.com/api/";
+        
         this.axiosInstance = axios.create({
             baseURL: this.baseUrl,
             timeout: 10000,
             headers: {
                 "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent": "FotMob-Android-App/1000.2.148" // User-Agent plus robuste
             }
         });
 
-        // L'intercepteur assure que le header 'x-mas' est présent AVANT la requête
+        // Intercepteur : Assure que 'x-mas' est présent APRÈS l'initialisation
         this.axiosInstance.interceptors.request.use(async (config) => {
-            if (!this.xmas) {
-                await this.ensureInitialized();
-            }
-            // 🚨 S'assurer que le header est un string valide, même en cas de fallback
-            config.headers["x-mas"] = this.xmas || "fallback-header";
+            await this.initializationPromise; // Attendre l'initialisation complète
+
+            // 🚨 Utilise le fallback si l'initialisation a échoué
+            config.headers["x-mas"] = this.xmas || "static-fallback-value";
             return config;
         });
     }
 
     async ensureInitialized() {
-        if (!this.xmas) {
-            try {
-                // Tentative de récupération du header dynamique
-                const response = await axios.get("http://46.101.91.154:6006/");
-                this.xmas = response.data["x-mas"];
-                console.log("X-MAS Header initialized successfully.");
-            } catch (error) {
-                // FALLBACK : En cas d'échec (blocage IP, service non dispo)
-                console.error("Failed to fetch dynamic x-mas header. Using static fallback.");
-                this.xmas = "static-fallback-value"; 
-            }
+        if (this.xmas) return; // Déjà initialisé
+
+        try {
+            const response = await axios.get("http://46.101.91.154:6006/");
+            this.xmas = response.data["x-mas"];
+            console.log("⚽ X-MAS Header initialized successfully.");
+        } catch (error) {
+            console.error("❌ Failed to fetch dynamic x-mas header. Using static fallback.");
+            this.xmas = "static-fallback-value"; // Assure qu'une valeur est toujours définie
         }
     }
 
     async safeTypeCastFetch(url) {
-        if (this.cache.has(url)) {
-            return JSON.parse(this.cache.get(url));
+        // Logique de cache avec expiration (ajoutée pour la robustesse)
+        const cacheEntry = this.cache.get(url);
+        if (cacheEntry && Date.now() < JSON.parse(cacheEntry).timestamp + CACHE_EXPIRATION_MS) {
+            return JSON.parse(JSON.parse(cacheEntry).data);
         }
         
         const response = await this.axiosInstance.get(url);
-        this.cache.set(url, JSON.stringify(response.data));
+        
+        // Mise en cache des données avec le nouveau timestamp
+        const dataToCache = {
+            data: JSON.stringify(response.data),
+            timestamp: Date.now() 
+        };
+        this.cache.set(url, JSON.stringify(dataToCache));
+
         return response.data;
     }
+
+    async getLeague(id, tab = "overview", timeZone = "Europe/Paris") {
+        const url = `leagues?id=${id}&tab=${tab}&type=league&timeZone=${timeZone}`;
+        return await this.safeTypeCastFetch(url);
+    }
     
-    // Méthode pour récupérer les données de la ligue
-    async getLeague(id, tab = "overview", type = "league", timeZone = "Europe/London") {
-        const url = `leagues?id=${id}&tab=${tab}&type=${type}&timeZone=${timeZone}`;
+    // 🌟 Ajout de la méthode matchDetails
+    async getMatchDetails(id, timeZone = "Europe/Paris") {
+        const url = `matchDetails?matchId=${id}&timeZone=${timeZone}`;
         return await this.safeTypeCastFetch(url);
     }
 }
 
-// 🎯 Exportez l'instance unique de la classe pour que les handlers puissent l'utiliser
+// 🎯 Exportez l'instance unique
 export const fotmob = new Fotmob();
