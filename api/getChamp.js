@@ -51,11 +51,6 @@ class Fotmob {
         this.cache.set(url, JSON.stringify(response.data));
         return response.data;
     }
-
-    async getLeague(id, tab = "overview", type = "league", timeZone = "Europe/London") {
-        const url = `leagues?id=${id}&tab=${tab}&type=${type}&timeZone=${timeZone}`;
-        return await this.safeTypeCastFetch(url);
-    }
     
     // Méthode pour récupérer les données de la ligue
     async getLeague(id, tab = "overview", type = "league", timeZone = "Europe/London") {
